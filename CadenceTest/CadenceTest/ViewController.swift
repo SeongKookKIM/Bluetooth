@@ -20,8 +20,14 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
 
     var lastValidCadence: Double = 0
     var lastValidSpeed: Double = 0
-    let validCadenceTimeout: TimeInterval = 5 // seconds
+    var isFirstMeasurement = true
+    let validCadenceTimeout: TimeInterval = 2 // seconds
     var lastValidCadenceTime: Date?
+    
+    var totalDistance: Double = 0 // 총 이동 거리 (km)
+    var totalCalories: Double = 0 // 총 소모 칼로리 (kcal)
+    var lastUpdateTime: Date? // 마지막 업데이트 시간
+    var userWeight: Double = 70 // 사용자 체중 (kg), 기본값 70kg
 
     var connectButton: UIButton!
     var disconnectButton: UIButton!
@@ -29,6 +35,8 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
     var speedLabel: UILabel!
     var statusLabel: UILabel!
     var deviceNameLabel: UILabel!
+    var distanceLabel: UILabel!
+    var caloriesLabel: UILabel!
     
     var centralManager: CBCentralManager!
     var cadencePeripheral: CBPeripheral?
@@ -81,6 +89,18 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
         deviceNameLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(deviceNameLabel)
         
+        distanceLabel = UILabel()
+        distanceLabel.text = "Distance: 0.00 km"
+        distanceLabel.font = UIFont.systemFont(ofSize: 40, weight: .regular)
+        distanceLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(distanceLabel)
+
+        caloriesLabel = UILabel()
+        caloriesLabel.text = "Calories: 0 kcal"
+        caloriesLabel.font = UIFont.systemFont(ofSize: 40, weight: .regular)
+        caloriesLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(caloriesLabel)
+        
         setupConstraints()
     }
     
@@ -98,7 +118,13 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
             speedLabel.topAnchor.constraint(equalTo: cadenceLabel.bottomAnchor, constant: 20),
             speedLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             
-            statusLabel.topAnchor.constraint(equalTo: speedLabel.bottomAnchor, constant: 20),
+            distanceLabel.topAnchor.constraint(equalTo: speedLabel.bottomAnchor, constant: 20),
+            distanceLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+
+            caloriesLabel.topAnchor.constraint(equalTo: distanceLabel.bottomAnchor, constant: 10),
+            caloriesLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            
+            statusLabel.topAnchor.constraint(equalTo: caloriesLabel.bottomAnchor, constant: 20),
             statusLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             
             deviceNameLabel.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 20),
@@ -198,41 +224,44 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
         print("Parsed Crank Revolutions: \(crankRevolutions)")
         print("Parsed Crank Event Time: \(crankEventTime)")
 
-        let crankDiff = (crankRevolutions >= lastCrankRevolutions) ? (crankRevolutions - lastCrankRevolutions) : (crankRevolutions &+ (0xFFFF - lastCrankRevolutions))
-        let crankTimeDiff = (crankEventTime >= lastCrankEventTime) ? (crankEventTime - lastCrankEventTime) : (crankEventTime &+ (0xFFFF - lastCrankEventTime))
-
         var cadence: Double = 0
         var speed: Double = 0
 
-        if crankTimeDiff > 0 {
-            cadence = Double(crankDiff) / (Double(crankTimeDiff) / 1024.0) * 60.0
-        }
+        if !isFirstMeasurement {
+            let crankDiff = (crankRevolutions >= lastCrankRevolutions) ? (crankRevolutions - lastCrankRevolutions) : (crankRevolutions &+ (0xFFFF - lastCrankRevolutions))
+            let crankTimeDiff = (crankEventTime >= lastCrankEventTime) ? (crankEventTime - lastCrankEventTime) : (crankEventTime &+ (0xFFFF - lastCrankEventTime))
 
-        if data.count >= 11 {
-            let wheelRevolutions = UInt32(data[5]) | (UInt32(data[6]) << 8) | (UInt32(data[7]) << 16) | (UInt32(data[8]) << 24)
-            let wheelEventTime = UInt16(data[9]) | (UInt16(data[10]) << 8)
-
-            print("Parsed Wheel Revolutions: \(wheelRevolutions)")
-            print("Parsed Wheel Event Time: \(wheelEventTime)")
-
-            let wheelDiff = (wheelRevolutions >= lastWheelRevolutions) ? (wheelRevolutions - lastWheelRevolutions) : (wheelRevolutions &+ (0xFFFFFFFF - lastWheelRevolutions))
-            let wheelTimeDiff = (wheelEventTime >= lastWheelEventTime) ? (wheelEventTime - lastWheelEventTime) : (wheelEventTime &+ (0xFFFF - lastWheelEventTime))
-
-            if wheelTimeDiff > 0 {
-                let wheelRPM = Double(wheelDiff) / (Double(wheelTimeDiff) / 1024.0) * 60.0
-                speed = wheelRPM * wheelCircumference / 60000.0
+            if crankTimeDiff > 0 {
+                cadence = Double(crankDiff) / (Double(crankTimeDiff) / 1024.0) * 60.0
             }
 
-            print("Wheel Diff: \(wheelDiff)")
-            print("Wheel Time Diff: \(wheelTimeDiff)")
+            if data.count >= 11 {
+                let wheelRevolutions = UInt32(data[5]) | (UInt32(data[6]) << 8) | (UInt32(data[7]) << 16) | (UInt32(data[8]) << 24)
+                let wheelEventTime = UInt16(data[9]) | (UInt16(data[10]) << 8)
 
-            lastWheelRevolutions = wheelRevolutions
-            lastWheelEventTime = wheelEventTime
+                print("Parsed Wheel Revolutions: \(wheelRevolutions)")
+                print("Parsed Wheel Event Time: \(wheelEventTime)")
+
+                let wheelDiff = (wheelRevolutions >= lastWheelRevolutions) ? (wheelRevolutions - lastWheelRevolutions) : (wheelRevolutions &+ (0xFFFFFFFF - lastWheelRevolutions))
+                let wheelTimeDiff = (wheelEventTime >= lastWheelEventTime) ? (wheelEventTime - lastWheelEventTime) : (wheelEventTime &+ (0xFFFF - lastWheelEventTime))
+
+                if wheelTimeDiff > 0 {
+                    let wheelRPM = Double(wheelDiff) / (Double(wheelTimeDiff) / 1024.0) * 60.0
+                    speed = wheelRPM * wheelCircumference / 60000.0
+                }
+
+                print("Wheel Diff: \(wheelDiff)")
+                print("Wheel Time Diff: \(wheelTimeDiff)")
+
+                lastWheelRevolutions = wheelRevolutions
+                lastWheelEventTime = wheelEventTime
+            } else {
+                speed = estimateSpeedFromCadence(cadence)
+            }
         } else {
-            // 휠 데이터가 없을 경우 케이던스를 사용하여 속도 추정
-            speed = estimateSpeedFromCadence(cadence)
+            isFirstMeasurement = false
         }
-        
+
         if cadence > 0 {
             lastValidCadence = cadence
             lastValidCadenceTime = Date()
@@ -252,8 +281,9 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
 
         if cadence == 0 {
             consecutiveZeroCount += 1
-            if consecutiveZeroCount < maxConsecutiveZeros {
-                return
+            if consecutiveZeroCount >= maxConsecutiveZeros {
+                lastValidCadence = 0
+                lastValidSpeed = 0
             }
         } else {
             consecutiveZeroCount = 0
@@ -261,17 +291,23 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
 
         print("Cadence: \(cadence)")
         print("Speed: \(speed)")
-        
-        print("====================")
 
         lastCrankRevolutions = crankRevolutions
         lastCrankEventTime = crankEventTime
+        
+        updateDistanceAndCalories(speed: speed)
+
+        print("Total Distance: \(totalDistance)")
+        print("Total Calories: \(totalCalories)")
+        print("====================")
     }
 
     func updateUI(cadence: Double, speed: Double) {
         DispatchQueue.main.async {
             self.cadenceLabel.text = String(format: "Cadence: %.1f RPM", cadence)
             self.speedLabel.text = String(format: "Speed: %.2f km/h", speed)
+            self.distanceLabel.text = String(format: "Distance: %.2f km", self.totalDistance)
+            self.caloriesLabel.text = String(format: "Calories: %.0f kcal", self.totalCalories)
         }
     }
     
@@ -281,5 +317,40 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
         let rotationsPerHour = cadence * 60 // 시간당 회전수
         let distancePerHour = rotationsPerHour * wheelCircumference / 1000000 // km/h
         return distancePerHour
+    }
+    
+    func updateDistanceAndCalories(speed: Double) {
+        let currentTime = Date()
+        if let lastTime = lastUpdateTime {
+            let timeInterval = currentTime.timeIntervalSince(lastTime) / 3600 // 시간 단위로 변환
+            let distance = speed * timeInterval // km
+            totalDistance += distance
+            
+            // MET 값을 사용한 칼로리 계산 (대략적인 추정)
+            let met = estimateMET(speed: speed)
+            let calories = met * userWeight * timeInterval
+            totalCalories += calories
+            
+            updateDistanceAndCaloriesUI()
+        }
+        lastUpdateTime = currentTime
+    }
+
+    func estimateMET(speed: Double) -> Double {
+        // 속도에 따른 대략적인 MET 값 (매우 간단한 추정)
+        if speed < 16 { // 느린 속도
+            return 4
+        } else if speed < 20 { // 중간 속도
+            return 6
+        } else { // 빠른 속도
+            return 8
+        }
+    }
+
+    func updateDistanceAndCaloriesUI() {
+        DispatchQueue.main.async {
+            self.distanceLabel.text = String(format: "Distance: %.2f km", self.totalDistance)
+            self.caloriesLabel.text = String(format: "Calories: %.0f kcal", self.totalCalories)
+        }
     }
 }
