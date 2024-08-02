@@ -29,14 +29,21 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
     var lastUpdateTime: Date? // 마지막 업데이트 시간
     var userWeight: Double = 70 // 사용자 체중 (kg), 기본값 70kg
 
+    var timer: Timer?
+    var isRunning = false
+    var startTime: Date?
+    var elapsedTime: TimeInterval = 0
+
     var connectButton: UIButton!
     var disconnectButton: UIButton!
+    var startStopButton: UIButton!
     var cadenceLabel: UILabel!
     var speedLabel: UILabel!
     var statusLabel: UILabel!
     var deviceNameLabel: UILabel!
     var distanceLabel: UILabel!
     var caloriesLabel: UILabel!
+    var timerLabel: UILabel!
     
     var centralManager: CBCentralManager!
     var cadencePeripheral: CBPeripheral?
@@ -66,6 +73,12 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
         disconnectButton.addTarget(self, action: #selector(disconnectPressed), for: .touchUpInside)
         disconnectButton.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(disconnectButton)
+        
+        startStopButton = UIButton(type: .system)
+        startStopButton.setTitle("시작", for: .normal)
+        startStopButton.addTarget(self, action: #selector(startStopPressed), for: .touchUpInside)
+        startStopButton.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(startStopButton)
         
         cadenceLabel = UILabel()
         cadenceLabel.text = "Cadence: "
@@ -101,6 +114,12 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
         caloriesLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(caloriesLabel)
         
+        timerLabel = UILabel()
+        timerLabel.text = "00:00"
+        timerLabel.font = UIFont.systemFont(ofSize: 40, weight: .heavy)
+        timerLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(timerLabel)
+
         setupConstraints()
     }
     
@@ -112,7 +131,10 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
             disconnectButton.topAnchor.constraint(equalTo: connectButton.bottomAnchor, constant: 20),
             disconnectButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             
-            cadenceLabel.topAnchor.constraint(equalTo: disconnectButton.bottomAnchor, constant: 40),
+            timerLabel.topAnchor.constraint(equalTo: disconnectButton.bottomAnchor, constant: 20),
+            timerLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            
+            cadenceLabel.topAnchor.constraint(equalTo: timerLabel.bottomAnchor, constant: 20),
             cadenceLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             
             speedLabel.topAnchor.constraint(equalTo: cadenceLabel.bottomAnchor, constant: 20),
@@ -123,12 +145,15 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
 
             caloriesLabel.topAnchor.constraint(equalTo: distanceLabel.bottomAnchor, constant: 10),
             caloriesLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            
+
             statusLabel.topAnchor.constraint(equalTo: caloriesLabel.bottomAnchor, constant: 20),
             statusLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             
             deviceNameLabel.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 20),
-            deviceNameLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor)
+            deviceNameLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            
+            startStopButton.topAnchor.constraint(equalTo: deviceNameLabel.bottomAnchor, constant: 20),
+            startStopButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
         ])
     }
     
@@ -139,6 +164,45 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
     @objc func disconnectPressed() {
         if let peripheral = cadencePeripheral {
             centralManager.cancelPeripheralConnection(peripheral)
+        }
+    }
+    
+    @objc func startStopPressed() {
+        if isRunning {
+            stopTimer()
+            startStopButton.setTitle("시작", for: .normal)
+        } else {
+            startTimer()
+            startStopButton.setTitle("정지", for: .normal)
+        }
+    }
+
+    func startTimer() {
+        isRunning = true
+        startTime = Date()
+        lastUpdateTime = Date()
+        timer = Timer.scheduledTimer(timeInterval: 1.0, target: self, selector: #selector(timerFired), userInfo: nil, repeats: true)
+    }
+
+    func stopTimer() {
+        isRunning = false
+        timer?.invalidate()
+        timer = nil
+    }
+
+    @objc func timerFired() {
+        if isRunning {
+            updateDistanceAndCalories(speed: lastValidSpeed)
+            updateTimerLabel()
+        }
+    }
+
+    func updateTimerLabel() {
+        if let startTime = startTime {
+            elapsedTime = Date().timeIntervalSince(startTime)
+            let minutes = Int(elapsedTime) / 60
+            let seconds = Int(elapsedTime) % 60
+            timerLabel.text = String(format: "%02d:%02d", minutes, seconds)
         }
     }
     
