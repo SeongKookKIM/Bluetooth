@@ -58,11 +58,14 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
     var discoveredPeripherals: [CBPeripheral] = []
     var bluetoothListSheet: UIAlertController?
     
+    var knownPeripheralIdentifiers: [UUID] = []
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         
         setupUI()
         
+        loadKnownPeripheralIdentifiers()
         centralManager = CBCentralManager(delegate: self, queue: nil)
     }
     
@@ -213,7 +216,11 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
     
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         if central.state == .poweredOn {
-            centralManager.scanForPeripherals(withServices: [cadenceServiceUUID], options: nil)
+            // 알려진 기기 자동 연결
+            let knownPeripherals = centralManager.retrievePeripherals(withIdentifiers: knownPeripheralIdentifiers)
+            for peripheral in knownPeripherals {
+                centralManager.connect(peripheral, options: nil)
+            }
         } else {
             print("Bluetooth is not available.")
         }
@@ -497,12 +504,42 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
         cadencePeripheral?.delegate = self
         centralManager.connect(peripheral, options: nil)
         dismiss(animated: true, completion: nil)
+        
+        // 연결된 기기의 식별자 저장
+        if !knownPeripheralIdentifiers.contains(peripheral.identifier) {
+            knownPeripheralIdentifiers.append(peripheral.identifier)
+            saveKnownPeripheralIdentifiers()
+        }
     }
+    
+    func saveKnownPeripheralIdentifiers() {
+        let identifierStrings = knownPeripheralIdentifiers.map { $0.uuidString }
+        UserDefaults.standard.set(identifierStrings, forKey: "KnownPeripheralIdentifiers")
+    }
+
+    func loadKnownPeripheralIdentifiers() {
+        if let identifierStrings = UserDefaults.standard.stringArray(forKey: "KnownPeripheralIdentifiers") {
+            knownPeripheralIdentifiers = identifierStrings.compactMap { UUID(uuidString: $0) }
+        }
+    }
+
+
     
     // 블루투스
     @objc func connectPressed() {
         discoveredPeripherals.removeAll()
+        
+        // 알려진 기기 검색
+        let knownPeripherals = centralManager.retrievePeripherals(withIdentifiers: knownPeripheralIdentifiers)
+        for peripheral in knownPeripherals {
+            if !discoveredPeripherals.contains(where: { $0.identifier == peripheral.identifier }) {
+                discoveredPeripherals.append(peripheral)
+            }
+        }
+        
         updateBluetoothListSheet()
+        
+        // 새로운 기기 스캔
         centralManager.scanForPeripherals(withServices: nil, options: nil)
     }
 }
