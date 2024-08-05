@@ -53,6 +53,11 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
     
     let wheelCircumference: Double = 2105
     
+    /* 블루투스 sheet
+     */
+    var discoveredPeripherals: [CBPeripheral] = []
+    var bluetoothListSheet: UIAlertController?
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         
@@ -63,7 +68,7 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
     
     func setupUI() {
         connectButton = UIButton(type: .system)
-        connectButton.setTitle("근처 블루투스연결", for: .normal)
+        connectButton.setTitle("장치연결", for: .normal)
         connectButton.addTarget(self, action: #selector(connectPressed), for: .touchUpInside)
         connectButton.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(connectButton)
@@ -157,9 +162,9 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
         ])
     }
     
-    @objc func connectPressed() {
-        centralManager.scanForPeripherals(withServices: [cadenceServiceUUID], options: nil)
-    }
+//    @objc func connectPressed() {
+//        centralManager.scanForPeripherals(withServices: [cadenceServiceUUID], options: nil)
+//    }
     
     @objc func disconnectPressed() {
         if let peripheral = cadencePeripheral {
@@ -214,14 +219,33 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
         }
     }
     
+//    func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
+//        print("Discovered peripheral: \(peripheral.name ?? "Unknown")")
+//        cadencePeripheral = peripheral
+//        cadencePeripheral?.delegate = self
+//        centralManager.stopScan()
+//        centralManager.connect(peripheral, options: nil)
+//    }
+    // 블루투스 Sheet
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
-        print("Discovered peripheral: \(peripheral.name ?? "Unknown")")
-        cadencePeripheral = peripheral
-        cadencePeripheral?.delegate = self
-        centralManager.stopScan()
-        centralManager.connect(peripheral, options: nil)
+        if !discoveredPeripherals.contains(where: { $0.identifier == peripheral.identifier }) {
+            discoveredPeripherals.append(peripheral)
+            DispatchQueue.main.async {
+                self.updateBluetoothListSheet()
+            }
+        }
     }
+
+
     
+//    func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+//        print("Connected to peripheral: \(peripheral.name ?? "Unknown")")
+//        peripheral.discoverServices([cadenceServiceUUID])
+//        DispatchQueue.main.async {
+//            self.statusLabel.text = "상태: Connected"
+//            self.deviceNameLabel.text = "Device: \(peripheral.name ?? "Unknown")"
+//        }
+//    }
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         print("Connected to peripheral: \(peripheral.name ?? "Unknown")")
         peripheral.discoverServices([cadenceServiceUUID])
@@ -243,13 +267,23 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
         }
     }
     
+//    func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+//        if let services = peripheral.services {
+//            for service in services {
+//                print("Discovered service: \(service.uuid)")
+//                if service.uuid == cadenceServiceUUID {
+//                    peripheral.discoverCharacteristics([cadenceCharacteristicUUID], for: service)
+//                }
+//            }
+//        }
+//    }
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-        if let services = peripheral.services {
-            for service in services {
-                print("Discovered service: \(service.uuid)")
-                if service.uuid == cadenceServiceUUID {
-                    peripheral.discoverCharacteristics([cadenceCharacteristicUUID], for: service)
-                }
+        guard let services = peripheral.services else { return }
+        
+        for service in services {
+            if service.uuid == cadenceServiceUUID {
+                peripheral.discoverCharacteristics([cadenceCharacteristicUUID], for: service)
+                break
             }
         }
     }
@@ -416,5 +450,59 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
             self.distanceLabel.text = String(format: "Distance: %.2f km", self.totalDistance)
             self.caloriesLabel.text = String(format: "Calories: %.0f kcal", self.totalCalories)
         }
+    }
+    
+    func showBluetoothListSheet() {
+        let sheet = UIAlertController(title: "사용 가능한 블루투스 장치", message: nil, preferredStyle: .actionSheet)
+        
+        let cancelAction = UIAlertAction(title: "취소", style: .cancel) { [weak self] _ in
+            self?.centralManager.stopScan()
+        }
+        sheet.addAction(cancelAction)
+        
+        present(sheet, animated: true, completion: nil)
+    }
+
+    func updateBluetoothListSheet() {
+        // 새로운 UIAlertController 생성
+        let newSheet = UIAlertController(title: "사용 가능한 블루투스 장치", message: nil, preferredStyle: .actionSheet)
+        
+        // 장치 목록 추가
+        for peripheral in discoveredPeripherals {
+            let action = UIAlertAction(title: peripheral.name ?? "Unknown Device", style: .default) { [weak self] _ in
+                self?.connectToPeripheral(peripheral)
+            }
+            newSheet.addAction(action)
+        }
+        
+        // 취소 액션 추가
+        let cancelAction = UIAlertAction(title: "취소", style: .cancel) { [weak self] _ in
+            self?.centralManager.stopScan()
+        }
+        newSheet.addAction(cancelAction)
+        
+        // 이전 시트를 dismiss하고 새 시트를 표시
+        if let presentedSheet = presentedViewController as? UIAlertController {
+            presentedSheet.dismiss(animated: true) { [weak self] in
+                self?.present(newSheet, animated: true, completion: nil)
+            }
+        } else {
+            present(newSheet, animated: true, completion: nil)
+        }
+    }
+
+    func connectToPeripheral(_ peripheral: CBPeripheral) {
+        centralManager.stopScan()
+        cadencePeripheral = peripheral
+        cadencePeripheral?.delegate = self
+        centralManager.connect(peripheral, options: nil)
+        dismiss(animated: true, completion: nil)
+    }
+    
+    // 블루투스
+    @objc func connectPressed() {
+        discoveredPeripherals.removeAll()
+        updateBluetoothListSheet()
+        centralManager.scanForPeripherals(withServices: nil, options: nil)
     }
 }
