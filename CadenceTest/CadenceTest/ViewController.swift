@@ -165,10 +165,6 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
         ])
     }
     
-//    @objc func connectPressed() {
-//        centralManager.scanForPeripherals(withServices: [cadenceServiceUUID], options: nil)
-//    }
-    
     @objc func disconnectPressed() {
         if let peripheral = cadencePeripheral {
             centralManager.cancelPeripheralConnection(peripheral)
@@ -226,13 +222,6 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
         }
     }
     
-//    func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
-//        print("Discovered peripheral: \(peripheral.name ?? "Unknown")")
-//        cadencePeripheral = peripheral
-//        cadencePeripheral?.delegate = self
-//        centralManager.stopScan()
-//        centralManager.connect(peripheral, options: nil)
-//    }
     // 블루투스 Sheet
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
         if !discoveredPeripherals.contains(where: { $0.identifier == peripheral.identifier }) {
@@ -242,25 +231,30 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
             }
         }
     }
-
-
     
-//    func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-//        print("Connected to peripheral: \(peripheral.name ?? "Unknown")")
-//        peripheral.discoverServices([cadenceServiceUUID])
-//        DispatchQueue.main.async {
-//            self.statusLabel.text = "상태: Connected"
-//            self.deviceNameLabel.text = "Device: \(peripheral.name ?? "Unknown")"
-//        }
-//    }
+    /* 기존
+     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+         print("Connected to peripheral: \(peripheral.name ?? "Unknown")")
+         peripheral.discoverServices([cadenceServiceUUID])
+         DispatchQueue.main.async {
+             self.statusLabel.text = "상태: Connected"
+             self.deviceNameLabel.text = "Device: \(peripheral.name ?? "Unknown")"
+             print("@@@@@@@@@!!!!!!!\(peripheral)")
+         }
+     }
+     */
+    
+    // @@@ 데이터 테스트
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         print("Connected to peripheral: \(peripheral.name ?? "Unknown")")
-        peripheral.discoverServices([cadenceServiceUUID])
+        peripheral.discoverServices([CBUUID(string: "180A")]) // Device Information Service UUID
         DispatchQueue.main.async {
             self.statusLabel.text = "상태: Connected"
             self.deviceNameLabel.text = "Device: \(peripheral.name ?? "Unknown")"
         }
     }
+    
+
     
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         if peripheral == cadencePeripheral {
@@ -273,47 +267,75 @@ class ViewController: UIViewController, CBCentralManagerDelegate, CBPeripheralDe
             }
         }
     }
-    
-//    func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-//        if let services = peripheral.services {
-//            for service in services {
-//                print("Discovered service: \(service.uuid)")
-//                if service.uuid == cadenceServiceUUID {
-//                    peripheral.discoverCharacteristics([cadenceCharacteristicUUID], for: service)
-//                }
-//            }
-//        }
-//    }
+
+    /* 기존
+     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+         guard let services = peripheral.services else { return }
+         
+         for service in services {
+             if service.uuid == cadenceServiceUUID {
+                 peripheral.discoverCharacteristics([cadenceCharacteristicUUID], for: service)
+                 break
+             }
+         }
+     }
+     */
+    // @@ 데이터 테스트
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         guard let services = peripheral.services else { return }
         
         for service in services {
-            if service.uuid == cadenceServiceUUID {
-                peripheral.discoverCharacteristics([cadenceCharacteristicUUID], for: service)
-                break
+            if service.uuid == CBUUID(string: "180A") {
+                peripheral.discoverCharacteristics([CBUUID(string: "2A25"), CBUUID(string: "2A26")], for: service) // Serial Number, Firmware Revision
             }
         }
     }
     
+    /* 기존
+     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+         if let characteristics = service.characteristics {
+             for characteristic in characteristics {
+                 print("Discovered characteristic: \(characteristic.uuid)")
+                 if characteristic.uuid == cadenceCharacteristicUUID {
+                     peripheral.setNotifyValue(true, for: characteristic)
+                 }
+             }
+         }
+     }
+     */
+    // @@ 데이터 테스트
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
         if let characteristics = service.characteristics {
             for characteristic in characteristics {
-                print("Discovered characteristic: \(characteristic.uuid)")
-                if characteristic.uuid == cadenceCharacteristicUUID {
-                    peripheral.setNotifyValue(true, for: characteristic)
+                if characteristic.uuid == CBUUID(string: "2A25") { // Serial Number Characteristic
+                    peripheral.readValue(for: characteristic)
+                } else if characteristic.uuid == CBUUID(string: "2A26") { // Firmware Revision Characteristic
+                    peripheral.readValue(for: characteristic)
                 }
             }
         }
     }
     
+    /* 기존
+     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+         if characteristic.uuid == cadenceCharacteristicUUID {
+             if let data = characteristic.value {
+                 print("Received data: \(data.map { String(format: "%02X", $0) }.joined())")
+                 parseCadenceData(data)
+             } else {
+                 print("Characteristic value is nil")
+             }
+         }
+     }
+     */
+    // @@ 데이터 테스트
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        if characteristic.uuid == cadenceCharacteristicUUID {
-            if let data = characteristic.value {
-                print("Received data: \(data.map { String(format: "%02X", $0) }.joined())")
-                parseCadenceData(data)
-            } else {
-                print("Characteristic value is nil")
-            }
+        if characteristic.uuid == CBUUID(string: "2A25"), let serialNumberData = characteristic.value {
+            let serialNumber = String(data: serialNumberData, encoding: .utf8) ?? "Unknown Serial Number"
+            print("Serial Number: \(serialNumber)")
+        } else if characteristic.uuid == CBUUID(string: "2A26"), let firmwareData = characteristic.value {
+            let firmwareVersion = String(data: firmwareData, encoding: .utf8) ?? "Unknown Firmware Version"
+            print("Firmware Version: \(firmwareVersion)")
         }
     }
     
